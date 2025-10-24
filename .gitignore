@@ -1,0 +1,8 @@
+*.pt
+*.pth
+*.onnx
+
+data/
+resource/
+runs/
+venv/
