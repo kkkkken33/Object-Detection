@@ -1,28 +1,59 @@
+# main.py — automatic train/resume/evaluate pipeline
+
+import os
+import json
 from ultralytics import YOLO
+from train import train_yolo_model
+
+# Path to your last best model
+best_ckpt = "./runs/detect/train2/weights/best.pt"
+data_yaml = "./data/dataset.yaml"
+
+def main():
+    # --------------------------------------------------
+    # 1️⃣ If a trained model exists → resume from it
+    # --------------------------------------------------
+    if os.path.exists(best_ckpt):
+        print(f"[INFO] Found existing checkpoint: {best_ckpt}")
+        model = YOLO(best_ckpt)
+        print("[INFO] Resuming fine-tuning for a few more epochs...")
+        # Resume for extra epochs to refine model
+        model.train(
+            data="./data/dataset.yaml",
+            resume=True,
+            epochs=30,
+            imgsz=1024,
+            patience=10,
+            device=0,
+        )
+    else:
+        print("[INFO] No previous checkpoint found. Starting new training...")
+        model = train_yolo_model(epochs=100, batch_size=16, img_size=1024, lr0=1e-3)
+
+    # --------------------------------------------------
+    # 2️⃣ Evaluate after training
+    # --------------------------------------------------
+    print("\n[INFO] Evaluating model on validation set...")
+    results = model.val(data=data_yaml, imgsz=1024, save_json=True)
+
+    # Display all key metrics
+    print(
+        f"\n✅ Validation Results:\n"
+        f"mAP50-95: {results.box.map:.4f}\n"
+        f"mAP50:    {results.box.map50:.4f}\n"
+        f"Precision:{results.box.mp:.4f}\n"
+        f"Recall:   {results.box.mr:.4f}\n"
+    )
+
+    # Save to file for later review
+    with open("val_results.txt", "w") as f:
+        json.dump({
+            "mAP50-95": results.box.map,
+            "mAP50": results.box.map50,
+            "Precision": results.box.mp,
+            "Recall": results.box.mr
+        }, f, indent=2)
+    print("[INFO] Validation metrics saved to val_results.txt")
 
 if __name__ == "__main__":
-    # # Create a new YOLO model from scratch
-    # model = YOLO("yolo11n.yaml")
-
-    # # Load a pretrained YOLO model (recommended for training)
-    # model = YOLO("yolo11n.pt")
-
-    # Load a model
-    model = YOLO("./runs/detect/train2/weights/best.pt")  # load a partially trained model
-
-    # # Train the model using the 'coco8.yaml' dataset for 3 epochs
-    # results = model.train(data="./data/dataset.yaml", epochs=100)
-
-    # Resume training
-    # results = model.train(resume=True, data="./data/dataset.yaml", epochs=100)
-
-    # Evaluate the model's performance on the validation set
-    results = model.val(data="./data/dataset.yaml", save_json=True)
-    with open("val_results.txt", "w") as f:
-        f.write(str(results.box.map))
-
-    # Perform object detection on an image using the model
-    # results = model("https://ultralytics.com/images/bus.jpg")
-
-    # Export the model to ONNX format
-    # success = model.export(format="onnx")
+    main()
