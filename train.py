@@ -3,7 +3,7 @@ import os, shutil, torch
 from datetime import datetime
 from ultralytics import YOLO
 
-def train_yolo_model(epochs=100, batch_size=16, img_size=1024, lr0=1e-3, data_yaml_path="./data/dataset.yaml", base_dir=".", model_save_dir="./runs/saved_models"):
+def train_yolo_model(epochs=100, batch_size=16, lr0=1e-3, data_yaml_path="./data/dataset.yaml", base_dir=".", model_save_dir="./runs/saved_models"):
     """Enhanced YOLO training with better augmentation, optimizer, and stability."""
     device = '0' if torch.cuda.is_available() else 'cpu'
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -24,7 +24,7 @@ def train_yolo_model(epochs=100, batch_size=16, img_size=1024, lr0=1e-3, data_ya
         data=data_yaml_path,
         epochs=epochs,
         batch=batch_size,
-        imgsz=img_size,
+        # imgsz=img_size,
         device=device,
         project=os.path.join(base_dir, "runs"),
         name=run_name,
