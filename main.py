@@ -5,8 +5,10 @@ import json
 from ultralytics import YOLO
 from train import train_yolo_model
 
+
 # Path to your last best model
-best_ckpt = "./runs/detect/train2/weights/best.pt"
+# best_ckpt = "./runs/train_20251103_233323/weights/last.pt"
+best_ckpt = ""  
 data_yaml = "./data/dataset.yaml"
 
 def main():
@@ -22,7 +24,6 @@ def main():
             data="./data/dataset.yaml",
             resume=True,
             epochs=30,
-            imgsz=1024,
             patience=10,
             device=0,
         )
@@ -34,7 +35,13 @@ def main():
     # 2️⃣ Evaluate after training
     # --------------------------------------------------
     print("\n[INFO] Evaluating model on validation set...")
-    results = model.val(data=data_yaml, imgsz=1024, save_json=True)
+    if os.path.exists(best_ckpt):
+        model = YOLO(best_ckpt)
+        print(f"[INFO] Evaluating model from checkpoint: {best_ckpt}")
+    else:
+        print("[WARN] No trained model found. Using default pretrained model for evaluation.")
+        model = YOLO('yolov8n.pt')
+    results = model.val(data=data_yaml, save_json=True)
 
     # Display all key metrics
     print(
