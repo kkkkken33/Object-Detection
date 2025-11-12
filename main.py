@@ -4,17 +4,21 @@ import os
 import json
 from ultralytics import YOLO
 from train import train_yolo_model
+from train import train_two_stage_yolo
+from train import train_rfdetr_model
 
 
 # Path to your last best model
-# best_ckpt = "./runs/train_20251103_233323/weights/last.pt"
-best_ckpt = ""  
+# best_ckpt = "./runs/train_20251108_005440/weights/best.pt"  
+best_ckpt = ""
 data_yaml = "./data/dataset.yaml"
 
-def main():
-    # --------------------------------------------------
-    # 1️⃣ If a trained model exists → resume from it
-    # --------------------------------------------------
+def main(is_freeze=False, is_yolo=True):
+    # # --------------------------------------------------
+    # # 1️⃣ If a trained model exists → resume from it
+    # # --------------------------------------------------
+    if is_yolo == False:
+        train_rfdetr_model()
     if os.path.exists(best_ckpt):
         print(f"[INFO] Found existing checkpoint: {best_ckpt}")
         model = YOLO(best_ckpt)
@@ -27,9 +31,11 @@ def main():
             patience=10,
             device=0,
         )
-    else:
+    elif is_freeze == False:
         print("[INFO] No previous checkpoint found. Starting new training...")
         model = train_yolo_model(epochs=100, batch_size=16, img_size=1024, lr0=1e-3)
+    else:
+        model = train_two_stage_yolo()
 
     # --------------------------------------------------
     # 2️⃣ Evaluate after training
@@ -63,4 +69,4 @@ def main():
     print("[INFO] Validation metrics saved to val_results.txt")
 
 if __name__ == "__main__":
-    main()
+    main(is_freeze=False, is_yolo=False)
