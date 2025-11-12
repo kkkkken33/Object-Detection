@@ -4,7 +4,7 @@ Convert MMDetection test.bbox.json to Kaggle submission format
 Usage:
    # Recommended: specify test.json to ensure all images are included
    python convert_to_submission.py --pred mm/work_dirs/deformable-detr_r50/test.bbox.json --output submission.csv
-   python convert_to_submission.py --pred inference_results.json --output submission.csv
+   python convert_to_submission.py --pred inference_results_20251108_091725.json --output submission.csv
 
    # Or explicitly specify test.json path
    python convert_to_submission.py --pred mm/work_dirs/deformable-detr_r50/test.bbox.json --test data/test.json --output submission.csv

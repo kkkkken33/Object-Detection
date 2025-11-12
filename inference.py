@@ -3,9 +3,13 @@ from ultralytics import YOLO
 from tqdm import tqdm
 from pathlib import Path
 import json
+import os
+import time
 
-# Load a pretrained YOLO11n model
-model = YOLO("./runs/detect/train2/weights/best.pt")
+best_ckpt = "./runs/train_20251108_0054402/weights/best.pt"
+
+# Load a pretrained YOLO12n model
+model = YOLO(best_ckpt)
 
 # Define path to directory containing images and videos for inference
 source = "./data/images/test"
@@ -60,7 +64,7 @@ for result in tqdm(results):
     # break
 
 # Save results to a JSON file
-with open("inference_results.json", "w", encoding="utf-8") as f:
+with open(f"inference_results_{time.strftime('%Y%m%d_%H%M%S')}.json", "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False, indent=2)
 
-print(f"Saved {len(out)} detections to inference_results.json")
+print(f"Saved {len(out)} detections to inference_results_{time.strftime('%Y%m%d_%H%M%S')}.json")
