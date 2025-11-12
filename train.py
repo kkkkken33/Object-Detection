@@ -1,7 +1,8 @@
 # train.py (Option B: auto-oversample without manually editing your YAML)
 import os, shutil, torch, glob, collections
 from datetime import datetime
-from ultralytics import YOLO
+from ultralytics import YOLO, RTDETR
+from rfdetr import RFDETRBase, RFDETRSmall
 
 # If you don't have PyYAML, install it: pip install pyyaml
 try:
@@ -166,11 +167,14 @@ def train_yolo_model(
 
     # ---------------- Load pretrained model ----------------
     try:
-        model = YOLO('yolo11n.pt')
-        model_type = 'yolo11n'
-    except Exception:
-        model = YOLO('yolov8n.pt')
-        model_type = 'yolov8n'
+        model = YOLO('yolo12s.pt')
+        model_type = 'yolo12s'
+        # model = RTDETR("rtdetrs.pt")
+        # model_type = 'rtdetr-r50'
+    except Exception as e:
+        # model = YOLO('yolov8n.pt')
+        # model_type = 'yolov8n'
+        raise AttributeError("model not available") from e
     print(f"[INFO] Using model: {model_type} on device={device}")
 
     # ---------------- Oversample (Option B) ----------------
@@ -195,41 +199,215 @@ def train_yolo_model(
         plots=True,
 
         # --- Optimizer / Scheduler ---
-        optimizer="AdamW",
-        lr0=lr0,
-        lrf=0.1,
-        momentum=0.937,
-        weight_decay=5e-4,
-        warmup_epochs=3,
-        cos_lr=True,
+        # optimizer="AdamW",
+        # lr0=lr0,
+        # lrf=0.1,
+        # momentum=0.937,
+        # weight_decay=5e-4,
+        # warmup_epochs=3,
+        # cos_lr=True,
 
         # --- Light augs only ---
-        hsv_h=0.015, hsv_s=0.7, hsv_v=0.4,
-        degrees=2.0, translate=0.05, scale=0.5, shear=0.05,
-        fliplr=0.5, flipud=0.0,
+        # hsv_h=0.015, hsv_s=0.7, hsv_v=0.4,
+        # degrees=2.0, translate=0.05, scale=0.5, shear=0.05,
+        # fliplr=0.5, flipud=0.0,
 
         # --- Imbalance-friendly loss tweaks ---
-        cls=1.0,          # give a bit more weight to classification
+        # cls=1.0,          # give a bit more weight to classification
 
         # --- Regularization & speed ---
         amp=True,
         cache=True,
-        workers=4,
+        workers=0,
         seed=42,
-        val=True
+        val=True,
     )
 
     # ---------------- Save best model ----------------
     model_save_path = os.path.join(model_save_dir, f"{model_type}_{timestamp}.pt")
     best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
 
+    # try:
+    #     model.model.save(model_save_path)
+    # except AttributeError:
+    #     try:
+    #         model.save(model_save_path)
+    #     except Exception:
+    #         if os.path.exists(best_model_path):
+    #             shutil.copy2(best_model_path, model_save_path)
+    # print(f"[INFO] ✅ Model saved to {model_save_path}")
+    return model
+
+def _write_temp_yaml(original_yaml_path, root, val_spec, names, oversampled_txt):
+    """Create a sibling YAML that points train to the oversampled txt; return its path."""
+    if yaml is None:
+        raise RuntimeError("PyYAML not installed. Run: pip install pyyaml")
+    with open(original_yaml_path, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    # Preserve everything but override 'train' only
+    cfg["train"] = oversampled_txt
+    # Keep root, val, names as-is; ensure absolute/relative work:
+    # (Ultralytics can resolve absolute txt directly; 'path' can stay)
+    tmp_yaml = os.path.join(os.path.dirname(original_yaml_path), "dataset_oversampled.yaml")
+    with open(tmp_yaml, "w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    print(f"[OVERSAMPLE] wrote YAML: {tmp_yaml}")
+    return tmp_yaml
+
+def train_two_stage_yolo(
+    epochs=100, batch_size=16, img_size=1024, lr0=1e-3,
+    data_yaml_path="./data/dataset.yaml", base_dir=".",
+    model_save_dir="./runs/saved_models"
+):
+    """Enhanced YOLO training with class-imbalance oversampling (Option B) and stable settings."""
+    os.makedirs(model_save_dir, exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "runs"), exist_ok=True)
+
+    device = '0' if torch.cuda.is_available() else 'cpu'
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"train_{timestamp}"
+
+    # ---------------- Load pretrained model ----------------
     try:
-        model.model.save(model_save_path)
-    except AttributeError:
-        try:
-            model.save(model_save_path)
-        except Exception:
-            if os.path.exists(best_model_path):
-                shutil.copy2(best_model_path, model_save_path)
-    print(f"[INFO] ✅ Model saved to {model_save_path}")
+        model = YOLO('yolo12s.pt')
+        model_type = 'yolo12s'
+    except Exception:
+        model = YOLO('yolov8n.pt')
+        model_type = 'yolov8n'
+    print(f"[INFO] Using model: {model_type} on device={device}")
+
+    # ---------------- Oversample (Option B) ----------------
+    cfg, root, train_spec, val_spec, names = _load_dataset_yaml(data_yaml_path)
+    oversampled_txt = _make_oversampled_txt(root, train_spec, cap=10)
+    oversampled_yaml = _write_temp_yaml(data_yaml_path, root, val_spec, names, oversampled_txt)
+
+    # ---------------- Stage 1 Train configuration ----------------
+    print("[INFO] Start training stage 1")
+    results = model.train(
+        data=oversampled_yaml,      # ← train now points to oversampled txt
+        epochs=50,
+        batch=batch_size,
+        # imgsz=img_size,
+        device=device,
+        project=os.path.join(base_dir, "runs"),
+        name=run_name,
+        patience=20,
+        save=True,
+        save_period=5,
+        plots=True,
+
+        # --- Regularization & speed ---
+        amp=True,
+        cache=True,
+        workers=4,
+        seed=42,
+        val=True,
+
+        # --- Freeze layers for finetuning ---
+        freeze = 10
+    )
+
+    # ---------------- Stage 2 Train Configuration ---------------
+    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
+    print("[INFO]Start training stage 2")
+    model = YOLO(best_model_path)
+    results = model.train(
+        data=oversampled_yaml,      # ← train now points to oversampled txt
+        epochs=30,
+        batch=batch_size,
+        # imgsz=img_size,
+        device=device,
+        project=os.path.join(base_dir, "runs"),
+        name=run_name,
+        patience=20,
+        save=True,
+        save_period=5,
+        plots=True,
+
+        # --- Regularization & speed ---
+        amp=True,
+        cache=True,
+        workers=4,
+        seed=42,
+        val=True,
+
+        # --- Freeze layers for finetuning ---
+        freeze = 5
+    )
+    # ---------------- Stage 3 Train Configuration ---------------\
+    print("[INFO]Start training stage 3")
+    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
+    model = YOLO(best_model_path)
+    results = model.train(
+        data=oversampled_yaml,      # ← train now points to oversampled txt
+        epochs=20,
+        batch=batch_size,
+        # imgsz=img_size,
+        device=device,
+        project=os.path.join(base_dir, "runs"),
+        name=run_name,
+        patience=20,
+        save=True,
+        save_period=5,
+        plots=True,
+
+        # --- Regularization & speed ---
+        amp=True,
+        cache=True,
+        workers=4,
+        seed=42,
+        val=True,
+
+        # --- Freeze layers for finetuning ---
+        # freeze = 5
+    )
+
+    # ---------------- Save best model ----------------
+    model_save_path = os.path.join(model_save_dir, f"{model_type}_{timestamp}.pt")
+    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
+
+    # try:
+    #     model.model.save(model_save_path)
+    # except AttributeError:
+    #     try:
+    #         model.save(model_save_path)
+    #     except Exception:
+    #         if os.path.exists(best_model_path):
+    #             shutil.copy2(best_model_path, model_save_path)
+    # print(f"[INFO] ✅ Model saved to {model_save_path}")
+    return model, best_model_path
+
+def train_rfdetr_model(
+    epochs=100, batch_size=16, img_size=1024, lr0=1e-3,
+    data_yaml_path="./data/dataset.yaml", base_dir=".",
+    model_save_dir="./runs/saved_models"
+):
+    """Enhanced YOLO training with class-imbalance oversampling (Option B) and stable settings."""
+    os.makedirs(model_save_dir, exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "runs"), exist_ok=True)
+
+    device = '0' if torch.cuda.is_available() else 'cpu'
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"train_{timestamp}"
+
+    # ---------------- Load pretrained model ----------------
+    try:
+        model = RFDETRSmall()
+        model_type = 'rfdetr_s'
+        print(f"[INFO] Using model: {model_type} on device={device}")        
+        model.train(
+            dataset_dir="./data/image",
+            epochs=100,
+            batch_size=4,
+            grad_accum_steps=4,
+            lr=1e-4,
+            output_dir=f"./runs/train_rfdetr_{timestamp}"
+        )
+        
+    except Exception as e:
+        model = RFDETRSmall()
+        raise AttributeError("model not available") from e
+    
+
     return model
