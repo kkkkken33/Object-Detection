@@ -2,23 +2,22 @@
 
 import os
 import json
-from rfdetr import RFDETRBase
+from ultralytics import YOLO
+from rfdetr import RFDETRBase, RFDETRSmall
 from train import train_rfdetr_model  # Import RF-DETR training function from train.py
 
 # Path to your last best model (RF-DETR checkpoint)
 best_ckpt = ""  # Example: "./runs/train_20251103_233323/weights/best.pt"
 data_yaml = "./data/dataset.yaml"  # Path to your dataset YAML
 
-def main(is_freeze=False, is_yolo=True):
+def main(is_freeze=False):
     # # --------------------------------------------------
     # # 1️⃣ If a trained model exists → resume from it
     # # --------------------------------------------------
-    if is_yolo == False:
-        train_rfdetr_model()
     if os.path.exists(best_ckpt):
         print(f"[INFO] Found existing checkpoint: {best_ckpt}")
         # Load RF-DETR model checkpoint
-        model = RFDETRBase.load(best_ckpt)  # RF-DETR method to load pre-trained models
+        model = RFDETRSmall.load(best_ckpt)  # RF-DETR method to load pre-trained models
         print("[INFO] Resuming fine-tuning for a few more epochs...")
         # Resume fine-tuning (adjust epochs as needed)
         model.train(
@@ -32,7 +31,7 @@ def main(is_freeze=False, is_yolo=True):
         print("[INFO] No previous checkpoint found. Starting new training...")
         # Train RF-DETR from scratch
         model, history, run_name = train_rfdetr_model(
-            dataset_dir="./data",   # Path to the COCO dataset
+            dataset_dir="./data/images",   # Path to the COCO dataset
             epochs=100,             # Training epochs
             batch_size=16,
             lr=1e-4,
@@ -107,4 +106,4 @@ if __name__ == "__main__":
     print("[INFO] Validation metrics saved to val_results.txt")
 
 if __name__ == "__main__":
-    main(is_freeze=False, is_yolo=False)
+    main(is_freeze=False)

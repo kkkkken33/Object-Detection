@@ -2,12 +2,19 @@ import os
 import json
 import glob
 from PIL import Image
+import yaml
 
 # Paths
-images_dir = './data/images/train'  # Path to your training images folder
-labels_dir = './data/labels/train'  # Path to your training labels folder
-output_json_path = './data/annotations/instances_train.json'  # Output path for COCO JSON
-categories = [{"id": 1, "name": "cat"}, {"id": 2, "name": "dog"}]  # Update this with your class names and IDs
+images_dir = './data/images/test'  # Path to your training images folder
+labels_dir = './data/labels/test'  # Path to your training labels folder
+output_json_path = './data/annotations/instances_test.json'  # Output path for COCO JSON
+# === Load category names from YAML ===
+yaml_path = './data/dataset.yaml'
+with open(yaml_path, 'r') as f:
+    data = yaml.safe_load(f)
+names = data['names']
+
+categories = [{"id": i + 1, "name": name, "supercategory": "none"} for i, name in enumerate(names)]
 
 def convert_yolo_to_coco(images_dir, labels_dir, categories):
     images = []
@@ -71,6 +78,7 @@ def convert_yolo_to_coco(images_dir, labels_dir, categories):
     }
 
     # Save to JSON file
+    os.makedirs(os.path.dirname(output_json_path), exist_ok=True)
     with open(output_json_path, 'w') as f:
         json.dump(coco_data, f, indent=2)
 

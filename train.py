@@ -2,7 +2,7 @@
 
 import os, shutil, torch, glob, collections
 from datetime import datetime
-from rfdetr import RFDETRBase  # RF-DETR library (pip install rfdetr)
+from rfdetr import RFDETRBase, RFDETRSmall  # RF-DETR library (pip install rfdetr)
 
 # If you don't have PyYAML, install it: pip install pyyaml
 try:
@@ -129,21 +129,6 @@ def _make_oversampled_txt(root, train_spec, cap=10):
     print(f"[OVERSAMPLE] wrote: {out_txt} (lines={lines_out})")
     return out_txt
 
-def _write_temp_yaml(original_yaml_path, root, val_spec, names, oversampled_txt):
-    """Create a sibling YAML that points train to the oversampled txt; return its path."""
-    if yaml is None:
-        raise RuntimeError("PyYAML not installed. Run: pip install pyyaml")
-    with open(original_yaml_path, "r") as f:
-        cfg = yaml.safe_load(f)
-
-    # Preserve everything but override 'train' only
-    cfg["train"] = oversampled_txt
-    tmp_yaml = os.path.join(os.path.dirname(original_yaml_path), "dataset_oversampled.yaml")
-    with open(tmp_yaml, "w") as f:
-        yaml.safe_dump(cfg, f, sort_keys=False)
-    print(f"[OVERSAMPLE] wrote YAML: {tmp_yaml}")
-    return tmp_yaml
-
 def train_rfdetr_model(
     dataset_dir="./data",   # Path to COCO-style data
     epochs=100,
@@ -156,7 +141,7 @@ def train_rfdetr_model(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"rfdetr_{timestamp}"
 
-    model = RFDETRBase()  # Initialize RF-DETR model
+    model = RFDETRSmall()  # Initialize RF-DETR model
     history = []
 
     # Callback to collect training metrics
@@ -166,9 +151,10 @@ def train_rfdetr_model(
     model.callbacks["on_fit_epoch_end"].append(on_epoch_end)
 
     # Build oversampled training list
-    cfg, root, train_spec, val_spec, names = _load_dataset_yaml(dataset_dir)
+    data_yaml_path = "./data/dataset.yaml"
+    cfg, root, train_spec, val_spec, names = _load_dataset_yaml(data_yaml_path)
     oversampled_txt = _make_oversampled_txt(root, train_spec, cap=10)
-    oversampled_yaml = _write_temp_yaml(dataset_dir, root, val_spec, names, oversampled_txt)
+    oversampled_yaml = _write_temp_yaml(data_yaml_path, root, val_spec, names, oversampled_txt)
 
     model.train(
         dataset_dir=dataset_dir,  # Train on the oversampled dataset
@@ -382,23 +368,6 @@ def train_yolo_model(
     # print(f"[INFO] ✅ Model saved to {model_save_path}")
     return model
 
-def _write_temp_yaml(original_yaml_path, root, val_spec, names, oversampled_txt):
-    """Create a sibling YAML that points train to the oversampled txt; return its path."""
-    if yaml is None:
-        raise RuntimeError("PyYAML not installed. Run: pip install pyyaml")
-    with open(original_yaml_path, "r") as f:
-        cfg = yaml.safe_load(f)
-
-    # Preserve everything but override 'train' only
-    cfg["train"] = oversampled_txt
-    # Keep root, val, names as-is; ensure absolute/relative work:
-    # (Ultralytics can resolve absolute txt directly; 'path' can stay)
-    tmp_yaml = os.path.join(os.path.dirname(original_yaml_path), "dataset_oversampled.yaml")
-    with open(tmp_yaml, "w") as f:
-        yaml.safe_dump(cfg, f, sort_keys=False)
-    print(f"[OVERSAMPLE] wrote YAML: {tmp_yaml}")
-    return tmp_yaml
-
 def train_two_stage_yolo(
     epochs=100, batch_size=16, img_size=1024, lr0=1e-3,
     data_yaml_path="./data/dataset.yaml", base_dir=".",
@@ -521,37 +490,3 @@ def train_two_stage_yolo(
     #             shutil.copy2(best_model_path, model_save_path)
     # print(f"[INFO] ✅ Model saved to {model_save_path}")
     return model, best_model_path
-
-def train_rfdetr_model(
-    epochs=100, batch_size=16, img_size=1024, lr0=1e-3,
-    data_yaml_path="./data/dataset.yaml", base_dir=".",
-    model_save_dir="./runs/saved_models"
-):
-    """Enhanced YOLO training with class-imbalance oversampling (Option B) and stable settings."""
-    os.makedirs(model_save_dir, exist_ok=True)
-    os.makedirs(os.path.join(base_dir, "runs"), exist_ok=True)
-
-    device = '0' if torch.cuda.is_available() else 'cpu'
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"train_{timestamp}"
-
-    # ---------------- Load pretrained model ----------------
-    try:
-        model = RFDETRSmall()
-        model_type = 'rfdetr_s'
-        print(f"[INFO] Using model: {model_type} on device={device}")        
-        model.train(
-            dataset_dir="./data/image",
-            epochs=100,
-            batch_size=4,
-            grad_accum_steps=4,
-            lr=1e-4,
-            output_dir=f"./runs/train_rfdetr_{timestamp}"
-        )
-        
-    except Exception as e:
-        model = RFDETRSmall()
-        raise AttributeError("model not available") from e
-    
-
-    return model
