@@ -1,492 +1,178 @@
-# train.py — RF-DETR integration with oversampling support (Option B)
+# train.py — RF-DETR training with COCO oversampling (no YOLO deps)
 
-import os, shutil, torch, glob, collections
+import os
+import json
+import shutil
 from datetime import datetime
-from rfdetr import RFDETRBase, RFDETRSmall  # RF-DETR library (pip install rfdetr)
+from collections import Counter, defaultdict
 
-# If you don't have PyYAML, install it: pip install pyyaml
-try:
-    import yaml
-except Exception:
-    yaml = None
+from rfdetr import RFDETRBase, RFDETRSmall  # pip install rfdetr
 
-def _resolve_path(root, p):
-    """Return absolute path for `p` which can be absolute, relative to root, or a txt file."""
-    if p is None:
-        return None
-    if os.path.isabs(p):
-        return p
-    if root and os.path.isabs(root):
-        return os.path.normpath(os.path.join(root, p))
-    return os.path.abspath(p)
 
-def _load_dataset_yaml(data_yaml_path):
-    if yaml is None:
-        raise RuntimeError("PyYAML not installed. Run: pip install pyyaml")
-    with open(data_yaml_path, "r") as f:
-        cfg = yaml.safe_load(f)
-    # Normalize fields
-    root = cfg.get("path", None)
-    train = cfg.get("train")
-    val = cfg.get("val")
-    names = cfg.get("names")
+# ---------------- COCO helpers ----------------
 
-    if root is not None:
-        root = os.path.abspath(os.path.join(os.path.dirname(data_yaml_path), root))  
-    return cfg, root, train, val, names
+def _read_coco(ann_path: str):
+    with open(ann_path, "r") as f:
+        coco = json.load(f)
+    coco.setdefault("images", [])
+    coco.setdefault("annotations", [])
+    coco.setdefault("categories", [])
+    return coco
 
-def _make_oversampled_txt(root, train_spec, cap=10):
+
+def _write_coco(obj, out_path: str):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(obj, f, indent=2)
+
+
+def _build_imgid_to_classes(coco):
+    """image_id -> set(class_ids) based on bbox segms (here: annotations list)."""
+    img_to_cls = defaultdict(set)
+    for ann in coco["annotations"]:
+        img_to_cls[ann["image_id"]].add(int(ann["category_id"]))
+    return img_to_cls
+
+
+def _class_counts(coco):
+    cnt = Counter()
+    for ann in coco["annotations"]:
+        cnt[int(ann["category_id"])] += 1
+    return cnt
+
+
+def oversample_coco_json(
+    dataset_dir: str,
+    train_json_rel: str = "annotations/instances_train.json",
+    out_json_rel: str = "annotations/instances_train_oversampled.json",
+    cap: int = 5,
+):
     """
-    Build an oversampled train.txt by duplicating images containing minority classes.
-    - root: dataset root from YAML's `path:` (can be None)
-    - train_spec: either a folder or an existing txt
-    Returns: absolute path to train_oversampled.txt
+    Duplicate minority-class images in COCO train json.
+
+    Strategy:
+      - Compute per-class counts
+      - class_weight = avg_count / class_count
+      - image repeat k = min(cap, round(max(class_weight of its classes)))
+      - Duplicate image entry with NEW image_id and duplicate annotations to point to that new id.
+      - File names are unchanged (point to same image files).
     """
-    # Resolve train source
-    train_path = _resolve_path(root, train_spec)
-    assert os.path.exists(train_path), f"Train path not found: {train_path}"
+    train_json = os.path.join(dataset_dir, train_json_rel)
+    coco = _read_coco(train_json)
 
-    # Collect (image -> classes) mapping
-    img_to_classes = {}
-    cls_counts = collections.Counter()
+    img_to_cls = _build_imgid_to_classes(coco)
+    cls_cnt = _class_counts(coco)
+    if not cls_cnt:
+        raise RuntimeError("[OVERSAMPLE] No annotations found in train json.")
 
-    if os.path.isdir(train_path):
-        # Expect COCO layout: images/train + labels/train
-        # infer labels dir
-        labels_dir = train_path.replace("images", "labels")
-        if not os.path.isdir(labels_dir):
-            raise FileNotFoundError(f"Labels folder not found for oversampling: {labels_dir}")
+    total = sum(cls_cnt.values())
+    avg = total / max(1, len(cls_cnt))
+    cls_w = {c: max(1.0, avg / cnt) for c, cnt in cls_cnt.items()}  # inverse-frequency weighting
 
-        # iterate labels
-        for lb in glob.glob(os.path.join(labels_dir, "*.txt")):
-            # map to image path (jpg/png)
-            base = os.path.splitext(os.path.basename(lb))[0]
-            img_jpg = os.path.join(train_path, base + ".jpg")
-            img_png = os.path.join(train_path, base + ".png")
-            img = img_jpg if os.path.exists(img_jpg) else img_png if os.path.exists(img_png) else None
-            if img is None:
-                continue
+    images_by_id = {im["id"]: im for im in coco["images"]}
+    anns_by_img = defaultdict(list)
+    for ann in coco["annotations"]:
+        anns_by_img[ann["image_id"]].append(ann)
 
-            classes = set()
-            with open(lb, "r") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if not parts:
-                        continue
-                    c = int(parts[0])
-                    classes.add(c)
-                    cls_counts[c] += 1
-            if classes:
-                img_to_classes[img] = classes
+    next_img_id = (max([im["id"] for im in coco["images"]]) if coco["images"] else 0) + 1
+    next_ann_id = (max([a["id"] for a in coco["annotations"]]) if coco["annotations"] else 0) + 1
 
-    elif os.path.isfile(train_path) and train_path.endswith(".txt"):
-        # If the YAML already points to a train.txt, we’ll read the list and
-        # locate corresponding label files to count classes.
-        lines = [l.strip() for l in open(train_path) if l.strip()]
-        for img in lines:
-            lb = img.replace(os.sep + "images" + os.sep, os.sep + "labels" + os.sep)
-            lb = os.path.splitext(lb)[0] + ".txt"
-            if not os.path.exists(lb):
-                continue
-            classes = set()
-            with open(lb, "r") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if not parts:
-                        continue
-                    c = int(parts[0])
-                    classes.add(c)
-                    cls_counts[c] += 1
-            if classes:
-                img_to_classes[img] = classes
-    else:
-        raise ValueError(f"Unsupported train spec: {train_spec}")
+    new_images, new_anns = [], []
 
-    if not cls_counts:
-        raise RuntimeError("No labels found while building oversampled list. Check dataset paths.")
+    for img_id, classes in img_to_cls.items():
+        if not classes:
+            continue
+        w = max(cls_w[c] for c in classes)
+        k = int(round(w))
+        k = min(max(k, 1), cap)
+        if k == 1:
+            continue  # no duplication needed
 
-    # Compute inverse-frequency weights
-    total = sum(cls_counts.values())
-    avg = total / max(1, len(cls_counts))
-    cls_weight = {c: max(1.0, avg / cnt) for c, cnt in cls_counts.items()}
+        src_img = images_by_id[img_id]
+        src_anns = anns_by_img.get(img_id, [])
 
-    # Per-image weight = max class weight in the image
-    img_weight = {img: max(cls_weight[c] for c in classes) for img, classes in img_to_classes.items()}
+        for _ in range(k - 1):
+            dup_img = dict(src_img)
+            dup_img["id"] = next_img_id
+            new_images.append(dup_img)
 
-    # Write oversampled txt alongside the train source (or under root)
-    out_dir = os.path.dirname(train_path) if os.path.isdir(train_path) else (root or os.path.dirname(train_path))
-    out_txt = os.path.join(out_dir, "train_oversampled.txt")
-    lines_out = 0
-    with open(out_txt, "w") as out:
-        for img, w in img_weight.items():
-            k = int(round(w))
-            k = min(max(k, 1), cap)  # cap duplication
-            for _ in range(k):
-                out.write(img + "\n")
-                lines_out += 1
+            for a in src_anns:
+                dup_ann = dict(a)
+                dup_ann["id"] = next_ann_id
+                dup_ann["image_id"] = next_img_id
+                new_anns.append(dup_ann)
+                next_ann_id += 1
 
-    print(f"[OVERSAMPLE] class counts: {dict(cls_counts)}")
-    print(f"[OVERSAMPLE] wrote: {out_txt} (lines={lines_out})")
-    return out_txt
+            next_img_id += 1
+
+    coco_os = {
+        "images": coco["images"] + new_images,
+        "annotations": coco["annotations"] + new_anns,
+        "categories": coco["categories"],
+    }
+    out_json = os.path.join(dataset_dir, out_json_rel)
+    _write_coco(coco_os, out_json)
+    print(f"[OVERSAMPLE] class counts: {dict(cls_cnt)}")
+    print(f"[OVERSAMPLE] +images={len(new_images)}  +anns={len(new_anns)}")
+    print(f"[OVERSAMPLE] wrote: {out_json}")
+    return out_json
+
+
+# ---------------- RF-DETR training ----------------
 
 def train_rfdetr_model(
-    dataset_dir="./data",   # Path to COCO-style data
-    epochs=100,
-    batch_size=16,
-    lr=1e-4,
-    device="cuda"
+    dataset_dir: str = "./data",      # ROOT containing train/, val/, annotations/
+    epochs: int = 100,
+    batch_size: int = 16,
+    lr: float = 1e-4,
+    device: str = "cuda",
+    cap: int = 5,
+    replace_instances: bool = True,   # swap instances_train.json → oversampled json during training
+    model_size: str = "small",        # "small" or "base"
 ):
-    """Train RF-DETR with class-imbalance oversampling (Option B)"""
+    """
+    Train RF-DETR on a COCO dataset with optional oversampling.
+    The training loader always reads annotations/instances_train.json, so we temporarily overwrite it.
+    """
     os.makedirs(dataset_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"rfdetr_{timestamp}"
 
-    model = RFDETRSmall()  # Initialize RF-DETR model
+    # 1) Build oversampled train json
+    oversampled_json = oversample_coco_json(
+        dataset_dir=dataset_dir,
+        train_json_rel="annotations/instances_train.json",
+        out_json_rel="annotations/instances_train_oversampled.json",
+        cap=cap,
+    )
+
+    # 2) (Optional) swap train json → oversampled
+    ann_dir = os.path.join(dataset_dir, "annotations")
+    orig_path = os.path.join(ann_dir, "instances_train.json")
+    bak_path = os.path.join(ann_dir, "instances_train.json.bak")
+    if replace_instances:
+        if os.path.exists(bak_path):
+            os.remove(bak_path)
+        os.replace(orig_path, bak_path)           # move original → .bak
+        shutil.copy2(oversampled_json, orig_path) # copy oversampled → default name
+
+    # 3) Build model
+    model = RFDETRSmall() if model_size == "small" else RFDETRBase()
     history = []
-
-    # Callback to collect training metrics
-    def on_epoch_end(data):
-        history.append(data)
-
+    def on_epoch_end(data): history.append(data)
     model.callbacks["on_fit_epoch_end"].append(on_epoch_end)
 
-    # Build oversampled training list
-    data_yaml_path = "./data/dataset.yaml"
-    cfg, root, train_spec, val_spec, names = _load_dataset_yaml(data_yaml_path)
-    oversampled_txt = _make_oversampled_txt(root, train_spec, cap=10)
-    oversampled_yaml = _write_temp_yaml(data_yaml_path, root, val_spec, names, oversampled_txt)
-
+    # 4) Train
     model.train(
-        dataset_dir=dataset_dir,  # Train on the oversampled dataset
+        dataset_dir=dataset_dir,  # expects train/, val/, annotations/instances_train.json
         epochs=epochs,
         batch_size=batch_size,
         lr=lr,
         device=device
     )
 
+    # 5) Restore original json
+    if replace_instances and os.path.exists(bak_path):
+        os.replace(bak_path, orig_path)
+
     return model, history, run_name
-
-def _make_oversampled_txt(root, train_spec, cap=10):
-    """
-    Build an oversampled train.txt by duplicating images containing minority classes.
-    - root: dataset root from YAML's `path:` (can be None)
-    - train_spec: either a folder or an existing txt
-    Returns: absolute path to train_oversampled.txt
-    """
-    # Resolve train source
-    train_path = _resolve_path(root, train_spec)
-    assert os.path.exists(train_path), f"Train path not found: {train_path}"
-
-    # Collect (image -> classes) mapping
-    img_to_classes = {}
-    cls_counts = collections.Counter()
-
-    if os.path.isdir(train_path):
-        # Expect YOLO layout: images/train + labels/train
-        # infer labels dir
-        if "images" + os.sep in train_path:
-            labels_dir = train_path.replace(os.sep + "images" + os.sep, os.sep + "labels" + os.sep)
-        else:
-            # try sibling labels/train
-            labels_dir = train_path.replace("images", "labels")
-        if not os.path.isdir(labels_dir):
-            raise FileNotFoundError(f"Labels folder not found for oversampling: {labels_dir}")
-
-        # iterate labels
-        for lb in glob.glob(os.path.join(labels_dir, "*.txt")):
-            # map to image path (jpg/png)
-            base = os.path.splitext(os.path.basename(lb))[0]
-            img_jpg = os.path.join(train_path, base + ".jpg")
-            img_png = os.path.join(train_path, base + ".png")
-            img = img_jpg if os.path.exists(img_jpg) else img_png if os.path.exists(img_png) else None
-            if img is None:
-                continue
-
-            classes = set()
-            with open(lb, "r") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if not parts:
-                        continue
-                    c = int(parts[0])
-                    classes.add(c)
-                    cls_counts[c] += 1
-            if classes:
-                img_to_classes[img] = classes
-
-    elif os.path.isfile(train_path) and train_path.endswith(".txt"):
-        # If the YAML already points to a train.txt, we’ll read the list and
-        # locate corresponding label files to count classes.
-        lines = [l.strip() for l in open(train_path) if l.strip()]
-        for img in lines:
-            # guess label path
-            lb = img.replace(os.sep + "images" + os.sep, os.sep + "labels" + os.sep)
-            lb = os.path.splitext(lb)[0] + ".txt"
-            if not os.path.exists(lb):
-                continue
-            classes = set()
-            with open(lb, "r") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if not parts:
-                        continue
-                    c = int(parts[0])
-                    classes.add(c)
-                    cls_counts[c] += 1
-            if classes:
-                img_to_classes[img] = classes
-    else:
-        raise ValueError(f"Unsupported train spec: {train_spec}")
-
-    if not cls_counts:
-        raise RuntimeError("No labels found while building oversampled list. Check dataset paths.")
-
-    # Compute inverse-frequency weights
-    total = sum(cls_counts.values())
-    avg = total / max(1, len(cls_counts))
-    cls_weight = {c: max(1.0, avg / cnt) for c, cnt in cls_counts.items()}
-
-    # Per-image weight = max class weight in the image
-    img_weight = {img: max(cls_weight[c] for c in classes) for img, classes in img_to_classes.items()}
-
-    # Write oversampled txt alongside the train source (or under root)
-    out_dir = os.path.dirname(train_path) if os.path.isdir(train_path) else (root or os.path.dirname(train_path))
-    out_txt = os.path.join(out_dir, "train_oversampled.txt")
-    lines_out = 0
-    with open(out_txt, "w") as out:
-        for img, w in img_weight.items():
-            k = int(round(w))
-            k = min(max(k, 1), cap)  # cap duplication
-            for _ in range(k):
-                out.write(img + "\n")
-                lines_out += 1
-
-    print(f"[OVERSAMPLE] class counts: {dict(cls_counts)}")
-    print(f"[OVERSAMPLE] wrote: {out_txt} (lines={lines_out})")
-    return out_txt
-
-def _write_temp_yaml(original_yaml_path, root, val_spec, names, oversampled_txt):
-    """Create a sibling YAML that points train to the oversampled txt; return its path."""
-    if yaml is None:
-        raise RuntimeError("PyYAML not installed. Run: pip install pyyaml")
-    with open(original_yaml_path, "r") as f:
-        cfg = yaml.safe_load(f)
-
-    # Preserve everything but override 'train' only
-    cfg["train"] = oversampled_txt
-    # Keep root, val, names as-is; ensure absolute/relative work:
-    # (Ultralytics can resolve absolute txt directly; 'path' can stay)
-    tmp_yaml = os.path.join(os.path.dirname(original_yaml_path), "dataset_oversampled.yaml")
-    with open(tmp_yaml, "w") as f:
-        yaml.safe_dump(cfg, f, sort_keys=False)
-    print(f"[OVERSAMPLE] wrote YAML: {tmp_yaml}")
-    return tmp_yaml
-
-def train_yolo_model(
-    epochs=100, batch_size=16, img_size=1024, lr0=1e-3,
-    data_yaml_path="./data/dataset.yaml", base_dir=".",
-    model_save_dir="./runs/saved_models"
-):
-    """Enhanced YOLO training with class-imbalance oversampling (Option B) and stable settings."""
-    os.makedirs(model_save_dir, exist_ok=True)
-    os.makedirs(os.path.join(base_dir, "runs"), exist_ok=True)
-
-    device = '0' if torch.cuda.is_available() else 'cpu'
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"train_{timestamp}"
-
-    # ---------------- Load pretrained model ----------------
-    try:
-        model = YOLO('yolo12s.pt')
-        model_type = 'yolo12s'
-        # model = RTDETR("rtdetrs.pt")
-        # model_type = 'rtdetr-r50'
-    except Exception as e:
-        # model = YOLO('yolov8n.pt')
-        # model_type = 'yolov8n'
-        raise AttributeError("model not available") from e
-    print(f"[INFO] Using model: {model_type} on device={device}")
-
-    # ---------------- Oversample (Option B) ----------------
-    cfg, root, train_spec, val_spec, names = _load_dataset_yaml(data_yaml_path)
-    oversampled_txt = _make_oversampled_txt(root, train_spec, cap=10)
-    oversampled_yaml = _write_temp_yaml(data_yaml_path, root, val_spec, names, oversampled_txt)
-
-    # ---------------- Train configuration ----------------
-    # Light augmentations only (mosaic/mixup/copy_paste OFF)
-    # Add focal loss knobs for imbalance (supported in 8.3.x; if you see SyntaxError, remove fl_gamma)
-    results = model.train(
-        data=oversampled_yaml,      # ← train now points to oversampled txt
-        epochs=epochs,
-        batch=batch_size,
-        # imgsz=img_size,
-        device=device,
-        project=os.path.join(base_dir, "runs"),
-        name=run_name,
-        patience=20,
-        save=True,
-        save_period=5,
-        plots=True,
-
-        # --- Optimizer / Scheduler ---
-        # optimizer="AdamW",
-        # lr0=lr0,
-        # lrf=0.1,
-        # momentum=0.937,
-        # weight_decay=5e-4,
-        # warmup_epochs=3,
-        # cos_lr=True,
-
-        # --- Light augs only ---
-        # hsv_h=0.015, hsv_s=0.7, hsv_v=0.4,
-        # degrees=2.0, translate=0.05, scale=0.5, shear=0.05,
-        # fliplr=0.5, flipud=0.0,
-
-        # --- Imbalance-friendly loss tweaks ---
-        # cls=1.0,          # give a bit more weight to classification
-
-        # --- Regularization & speed ---
-        amp=True,
-        cache=True,
-        workers=0,
-        seed=42,
-        val=True,
-    )
-
-    # ---------------- Save best model ----------------
-    model_save_path = os.path.join(model_save_dir, f"{model_type}_{timestamp}.pt")
-    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
-
-    # try:
-    #     model.model.save(model_save_path)
-    # except AttributeError:
-    #     try:
-    #         model.save(model_save_path)
-    #     except Exception:
-    #         if os.path.exists(best_model_path):
-    #             shutil.copy2(best_model_path, model_save_path)
-    # print(f"[INFO] ✅ Model saved to {model_save_path}")
-    return model
-
-def train_two_stage_yolo(
-    epochs=100, batch_size=16, img_size=1024, lr0=1e-3,
-    data_yaml_path="./data/dataset.yaml", base_dir=".",
-    model_save_dir="./runs/saved_models"
-):
-    """Enhanced YOLO training with class-imbalance oversampling (Option B) and stable settings."""
-    os.makedirs(model_save_dir, exist_ok=True)
-    os.makedirs(os.path.join(base_dir, "runs"), exist_ok=True)
-
-    device = '0' if torch.cuda.is_available() else 'cpu'
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"train_{timestamp}"
-
-    # ---------------- Load pretrained model ----------------
-    try:
-        model = YOLO('yolo12s.pt')
-        model_type = 'yolo12s'
-    except Exception:
-        model = YOLO('yolov8n.pt')
-        model_type = 'yolov8n'
-    print(f"[INFO] Using model: {model_type} on device={device}")
-
-    # ---------------- Oversample (Option B) ----------------
-    cfg, root, train_spec, val_spec, names = _load_dataset_yaml(data_yaml_path)
-    oversampled_txt = _make_oversampled_txt(root, train_spec, cap=10)
-    oversampled_yaml = _write_temp_yaml(data_yaml_path, root, val_spec, names, oversampled_txt)
-
-    # ---------------- Stage 1 Train configuration ----------------
-    print("[INFO] Start training stage 1")
-    results = model.train(
-        data=oversampled_yaml,      # ← train now points to oversampled txt
-        epochs=50,
-        batch=batch_size,
-        # imgsz=img_size,
-        device=device,
-        project=os.path.join(base_dir, "runs"),
-        name=run_name,
-        patience=20,
-        save=True,
-        save_period=5,
-        plots=True,
-
-        # --- Regularization & speed ---
-        amp=True,
-        cache=True,
-        workers=4,
-        seed=42,
-        val=True,
-
-        # --- Freeze layers for finetuning ---
-        freeze = 10
-    )
-
-    # ---------------- Stage 2 Train Configuration ---------------
-    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
-    print("[INFO]Start training stage 2")
-    model = YOLO(best_model_path)
-    results = model.train(
-        data=oversampled_yaml,      # ← train now points to oversampled txt
-        epochs=30,
-        batch=batch_size,
-        # imgsz=img_size,
-        device=device,
-        project=os.path.join(base_dir, "runs"),
-        name=run_name,
-        patience=20,
-        save=True,
-        save_period=5,
-        plots=True,
-
-        # --- Regularization & speed ---
-        amp=True,
-        cache=True,
-        workers=4,
-        seed=42,
-        val=True,
-
-        # --- Freeze layers for finetuning ---
-        freeze = 5
-    )
-    # ---------------- Stage 3 Train Configuration ---------------\
-    print("[INFO]Start training stage 3")
-    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
-    model = YOLO(best_model_path)
-    results = model.train(
-        data=oversampled_yaml,      # ← train now points to oversampled txt
-        epochs=20,
-        batch=batch_size,
-        # imgsz=img_size,
-        device=device,
-        project=os.path.join(base_dir, "runs"),
-        name=run_name,
-        patience=20,
-        save=True,
-        save_period=5,
-        plots=True,
-
-        # --- Regularization & speed ---
-        amp=True,
-        cache=True,
-        workers=4,
-        seed=42,
-        val=True,
-
-        # --- Freeze layers for finetuning ---
-        # freeze = 5
-    )
-
-    # ---------------- Save best model ----------------
-    model_save_path = os.path.join(model_save_dir, f"{model_type}_{timestamp}.pt")
-    best_model_path = os.path.join(base_dir, "runs", run_name, "weights", "best.pt")
-
-    # try:
-    #     model.model.save(model_save_path)
-    # except AttributeError:
-    #     try:
-    #         model.save(model_save_path)
-    #     except Exception:
-    #         if os.path.exists(best_model_path):
-    #             shutil.copy2(best_model_path, model_save_path)
-    # print(f"[INFO] ✅ Model saved to {model_save_path}")
-    return model, best_model_path
