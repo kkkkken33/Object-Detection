@@ -132,7 +132,7 @@ def _make_oversampled_txt(root, train_spec, cap=10):
 def train_rfdetr_model(
     dataset_dir="./data",   # Path to COCO-style data
     epochs=100,
-    batch_size=16,
+    batch_size=4,
     lr=1e-4,
     device="cuda"
 ):
@@ -161,7 +161,8 @@ def train_rfdetr_model(
         epochs=epochs,
         batch_size=batch_size,
         lr=lr,
-        device=device
+        device=device,
+        grad_accum_steps=4
     )
 
     return model, history, run_name
