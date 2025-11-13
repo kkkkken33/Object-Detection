@@ -31,7 +31,7 @@ def main(is_freeze=False):
         print("[INFO] No previous checkpoint found. Starting new training...")
         # Train RF-DETR from scratch
         model, history, run_name = train_rfdetr_model(
-            dataset_dir="./data/images",   # Path to the COCO dataset
+            dataset_dir="./data",   # Path to the COCO dataset
             epochs=100,             # Training epochs
             batch_size=16,
             lr=1e-4,
