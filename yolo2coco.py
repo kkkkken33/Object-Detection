@@ -5,9 +5,9 @@ from PIL import Image
 import yaml
 
 # Paths
-images_dir = './data/images/test'  # Path to your training images folder
-labels_dir = './data/labels/test'  # Path to your training labels folder
-output_json_path = './data/annotations/instances_test.json'  # Output path for COCO JSON
+images_dir = './data/images/train'  # Path to your training images folder
+labels_dir = './data/labels/train'  # Path to your training labels folder
+output_json_path = './data/annotations/instances_train.json'  # Output path for COCO JSON
 # === Load category names from YAML ===
 yaml_path = './data/dataset.yaml'
 with open(yaml_path, 'r') as f:

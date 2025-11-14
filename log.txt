@@ -1,0 +1,138 @@
+python .\main.py
+UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\Context.cpp:85.)
+FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+[INFO] No previous checkpoint found. Starting new training...
+Using a different number of positional encodings than DINOv2, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.
+Using patch size 16 instead of 14, which means we're not loading DINOv2 backbone weights. This is not a problem if finetuning a pretrained RF-DETR model.
+Loading pretrain weights
+[OVERSAMPLE] class counts: {3: 6188, 5: 3559, 1: 9359, 4: 5350, 8: 2738, 7: 1676, 2: 2967, 0: 7138, 9: 2111, 6: 1407}
+[OVERSAMPLE] wrote: D:\Course\2025fall\Intro to Emodied AI\Project2\data\images\train_oversampled.txt (lines=18135)
+[OVERSAMPLE] wrote YAML: ./data\dataset_oversampled.yaml
+Unable to initialize TensorBoard. Logging is turned off for this session.  Run 'pip install tensorboard' to enable logging.
+Not using distributed mode
+git:
+  sha: 45838af41db9fc2be120f2423abc5985ce49339e, status: has uncommited changes, branch: main
+
+Namespace(num_classes=10, grad_accum_steps=4, amp=True, lr=0.0001, lr_encoder=0.00015, batch_size=16, weight_decay=0.0001, epochs=100, lr_drop=100, clip_max_norm=0.1, lr_vit_layer_decay=0.8, lr_component_decay=0.7, do_benchmark=False, dropout=0, drop_path=0.0, drop_mode='standard', drop_schedule='constant', cutoff_epoch=0, pretrained_encoder=None, pretrain_weights='rf-detr-small.pth', pretrain_exclude_keys=None, pretrain_keys_modify_to_load=None, pretrained_distiller=None, encoder='dinov2_windowed_small', vit_encoder_num_layers=12, window_block_indexes=None, position_embedding='sine', out_feature_indexes=[3, 6, 9, 12], freeze_encoder=False, layer_norm=True, rms_norm=False, backbone_lora=False, force_no_pretrain=False, dec_layers=3, dim_feedforward=2048, hidden_dim=256, sa_nheads=8, ca_nheads=16, num_queries=300, group_detr=13, two_stage=True, projector_scale=['P4'], lite_refpoint_refine=True, num_select=300, dec_n_points=2, decoder_norm='LN', bbox_reparam=True, freeze_batch_norm=False, set_cost_class=2, set_cost_bbox=5, set_cost_giou=2, cls_loss_coef=1.0, bbox_loss_coef=5, giou_loss_coef=2, focal_alpha=0.25, aux_loss=True, sum_group_losses=False, use_varifocal_loss=False, use_position_supervised_loss=False, ia_bce_loss=True, dataset_file='roboflow', coco_path=None, dataset_dir='./data/images', square_resize_div_64=True, output_dir='output', dont_save_weights=False, checkpoint_interval=10, seed=42, resume='', start_epoch=0, eval=False, use_ema=True, ema_decay=0.993, ema_tau=100, num_workers=2, device='cpu', world_size=1, dist_url='env://', sync_bn=True, fp16_eval=False, encoder_only=False, backbone_only=False, resolution=512, use_cls_token=False, multi_scale=True, expanded_scales=True, do_random_resize_via_padding=False, warmup_epochs=0.0, lr_scheduler='step', lr_min_factor=0.0, early_stopping=False, early_stopping_patience=10, early_stopping_min_delta=0.001, early_stopping_use_ema=False, gradient_checkpointing=False, patch_size=16, num_windows=2, positional_encoding_size=32, mask_downsample_ratio=4, tensorboard=True, wandb=False, project=None, run=None, class_names=[], run_test=True, segmentation_head=False, distributed=False)
+number of params: 31819732
+[672]
+loading annotations into memory...
+Done (t=0.11s)
+creating index...
+index created!
+[672]
+loading annotations into memory...
+Done (t=0.00s)
+creating index...
+index created!
+[672]
+loading annotations into memory...
+Done (t=0.00s)
+creating index...
+index created!
+Get benchmark
+Start training
+Grad accum steps:  4
+Total batch size:  64
+LENGTH OF DATA LOADER: 156
+UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\Context.cpp:85.)
+FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\Context.cpp:85.)
+FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+Traceback (most recent call last):
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\main.py", line 79, in <module>
+    main()
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\main.py", line 33, in main
+    model, history, run_name = train_rfdetr_model(
+                               ^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\train.py", line 159, in train_rfdetr_model
+    model.train(
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\detr.py", line 83, in train
+    self.train_from_config(config, **kwargs)
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\detr.py", line 191, in train_from_config
+    self.model.train(
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\main.py", line 341, in train
+    train_stats = train_one_epoch(
+                  ^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\engine.py", line 129, in train_one_epoch
+    outputs = model(new_samples, new_targets)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\lwdetr.py", line 148, in forward
+    features, poss = self.backbone(samples)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\backbone\__init__.py", line 27, in forward
+    x = self[0](tensor_list)
+        ^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\backbone\backbone.py", line 124, in forward
+    feats = self.encoder(tensor_list.tensors)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\backbone\dinov2.py", line 188, in forward
+    x = self.encoder(x)
+        ^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\backbone\dinov2_with_windowed_attn.py", line 1073, in forward
+    embedding_output = self.embeddings(pixel_values)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\backbone\dinov2_with_windowed_attn.py", line 291, in forward
+    embeddings = self.patch_embeddings(pixel_values.to(dtype=target_dtype))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\models\backbone\dinov2_with_windowed_attn.py", line 212, in forward
+    embeddings = self.projection(pixel_values).flatten(2).transpose(1, 2)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\conv.py", line 548, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\torch\nn\modules\conv.py", line 543, in _conv_forward
+    return F.conv2d(
+           ^^^^^^^^^
+RuntimeError: Inference tensors cannot be saved for backward. Please do not use Tensors created in inference mode in computation tracked by autograd. To work around this, you can make a clone to get a normal tensor and use it in autograd, or use `torch.no_grad()` instead of `torch.inference_mode()`.
+
+Tried:
+File "D:\Course\2025fall\Intro to Emodied AI\Project2\venv\Lib\site-packages\rfdetr\detr.py", line 313, torch.inference_mode() -> torch.no_grad()
