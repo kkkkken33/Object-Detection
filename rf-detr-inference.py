@@ -1,58 +1,65 @@
-from rfdetr import RFDETRBase, RFDETRSmall
-from tqdm import tqdm
-from pathlib import Path
-import json
+# inference.py — using RF‑DETR for detection
+
 import os
+import json
 import time
-import torch
+from pathlib import Path
+from tqdm import tqdm
 from PIL import Image
 
-# Path to the best model checkpoint
+from rfdetr import RFDETRBase, RFDETRSmall  # RF‑DETR library
+
+# Path to your trained RF‑DETR checkpoint
 best_ckpt = "./runs/train_20251108_0054402/weights/best.pt"
 
-# Load RF-DETR model (change to small or base model depending on your setup)
+# Choose model variant
 model = RFDETRSmall.load(best_ckpt)  # or RFDETRBase.load(best_ckpt)
 
-# Define path to the directory containing images and videos for inference
+# Directory containing images for inference
 source = "./data/images/test"
 
-# Function to perform inference
-def perform_inference(image_path):
-    # Load the image
-    img = Image.open(image_path).convert("RGB")
-
-    # Perform inference using the RF-DETR model (you can set a threshold to filter out low-confidence detections)
-    results = model.predict(img, threshold=0.5)  # Set the threshold to 0.5 for filtering low confidence
-
-    # Parse the results
+# Function to convert RF‑DETR prediction output to COCO‑style
+def _to_coco_format(dets, image_id):
+    """
+    dets: list of dicts from model.predict(...)
+    returns list of dicts: {image_id, category_id, bbox, score}
+    """
     out = []
-    for result in results:
-        # result should contain bounding boxes, category ids, and scores
-        xyxy = result["bbox"]  # [x, y, width, height] (format: xyxy or [x1, y1, x2, y2])
-        category_id = result["category_id"]  # The class id of the predicted object
-        score = result["score"]  # Confidence score
-
-        # Calculate width and height from the bbox (if in [x, y, w, h] format)
-        x, y, w, h = xyxy
+    for d in dets:
+        category_id = int(d["category_id"])
+        bbox = d["bbox"]  # should be [x, y, w, h]
+        score = float(d["score"])
         out.append({
-            "image_id": image_path,  # Use the image path or file name as the ID
+            "image_id": image_id,
             "category_id": category_id,
-            "bbox": [x, y, w, h],  # Use [x, y, width, height]
+            "bbox": bbox,
             "score": score
         })
-
     return out
 
-# Process the source directory for inference
-out = []
-for image_path in tqdm(Path(source).glob("*.*")):  # Iterate through all image files in the directory
-    result = perform_inference(image_path)
-    out.extend(result)
+# Inference pipeline
+results_out = []
+for img_path in tqdm(sorted(Path(source).glob("*.*"))):
+    image_id = None
+    stem = img_path.stem
+    try:
+        image_id = int(stem)
+    except:
+        image_id = stem
 
-# Save results to a JSON file
+    img = Image.open(img_path).convert("RGB")
+    dets = model.predict(img, threshold=0.5)  # adjust threshold as needed
+
+    if not dets:
+        continue
+
+    coco_preds = _to_coco_format(dets, image_id)
+    results_out.extend(coco_preds)
+
+# Save to JSON
 timestamp = time.strftime('%Y%m%d_%H%M%S')
-output_filename = f"inference_results_{timestamp}.json"
-with open(output_filename, "w", encoding="utf-8") as f:
-    json.dump(out, f, ensure_ascii=False, indent=2)
+out_file = f"inference_results_rfdetr_{timestamp}.json"
+with open(out_file, "w", encoding="utf-8") as f:
+    json.dump(results_out, f, ensure_ascii=False, indent=2)
 
-print(f"Saved {len(out)} detections to {output_filename}")
+print(f"Saved {len(results_out)} detections to {out_file}")
