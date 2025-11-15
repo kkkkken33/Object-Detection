@@ -170,7 +170,9 @@ def train_rfdetr_model(
         batch_size=batch_size,
         lr=lr,
         device=device,
-        grad_accum_steps=4
+        grad_accum_steps=4,
+        # amp=False,
+        # num_workers=0
     )
 
     # 5) Restore original json

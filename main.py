@@ -86,7 +86,7 @@ def main(is_freeze: bool = False):
         model.train(
             dataset_dir=DATASET_DIR,
             epochs=30 if not is_freeze else 1,
-            batch_size=16,
+            batch_size=4,
             lr=1e-4,
             device=device,
         )
@@ -96,7 +96,7 @@ def main(is_freeze: bool = False):
         model, history, run_name = train_rfdetr_model(
             dataset_dir=DATASET_DIR,
             epochs=100,
-            batch_size=16,
+            batch_size=4,
             lr=1e-4,
             device=device,
             cap=5,                 # oversample cap per image
